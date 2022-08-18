@@ -1,0 +1,34 @@
+version: "3.8"
+
+services:
+  gsheets_watcher_service:
+    image: gsheets_watcher
+    build: .
+    command: python3 quickstart.py
+    env_file:
+      - ./.env
+    networks:
+      - dock-db-test
+#    depends_on:
+#      - db
+
+  db:
+    # image: postgres:13.0-alpine
+#    image: postgres
+    build:
+      context: ./psql
+      dockerfile: Dockerfile
+    ports:
+    - 5432:5432
+    env_file:
+      - .env.prod.db
+    depends_on:
+      - gsheets_watcher_service
+    networks:
+      - dock-db-test
+
+networks:
+  dock-db-test:
+    external: false
+    name: dock-db-test
+
