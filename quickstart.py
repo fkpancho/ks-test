@@ -15,7 +15,15 @@ import psycopg2
 
 import xml.etree.ElementTree as XML_ET
 
-DEBUG = False
+
+
+# Telegram
+import telebot
+from telethon.sync import TelegramClient
+from telethon.tl.types import InputPeerUser, InputPeerChannel
+from telethon import TelegramClient, sync, events
+
+DEBUG = True
 
 # ================================================================================================
 # ================================================================================================
@@ -34,13 +42,21 @@ if DEBUG:
     DB_PASSWORD = 'postgres'
     DB_HOST = '192.168.9.226'
     DB_TABLE = 'orders'
-    DB_PORT = '5431'
+    DB_PORT = '5432'
 
     CBR_CURRENCY_API_URL = 'https://cbr.ru/scripts/XML_daily.asp'
     CURRENCY_XML_FIND_PATTERN = ".Valute[CharCode='USD']/Value"
 
     CLIENT_SECRET_FILE = 'client_secret_226730576997-ec5guc24o5fjat8mfq0bgt1sm48188ag.apps.googleusercontent.com.json'
     CLIENT_TOKEN_FILE = 'token.json'
+
+    TG_BOT_TOKEN = '5557597380:AAHhvCaHszjePXNsfzG1WgIA5NbqntF3NUI'
+    TG_BOT_LINK = 't.me/YacynaPavel_ks_test_bot'
+    TG_API_ID = '11364487'
+    TG_API_HASH = '304f5545f4e1a61810243fd6f4b04d93'
+    TG_PHONE = '+79166400988'
+    TG_CHAT_ID = '142587393'
+    TG_REMINDER_PERIOD_CYCLES = 2
 # ================================================================================================
 # ================================================================================================
 
@@ -70,7 +86,13 @@ if not DEBUG:
     CLIENT_SECRET_FILE = os.environ['CLIENT_SECRET_FILE']
     CLIENT_TOKEN_FILE = os.environ['CLIENT_TOKEN_FILE']
 
-
+    TG_BOT_TOKEN = os.environ['TG_BOT_TOKEN']
+    TG_BOT_LINK = os.environ['TG_BOT_LINK']
+    TG_API_ID = os.environ['TG_API_ID']
+    TG_API_HASH = os.environ['TG_API_HASH']
+    TG_PHONE = os.environ['TG_PHONE']
+    TG_CHAT_ID = os.environ['TG_CHAT_ID']
+    TG_REMINDER_PERIOD_CYCLES = os.environ['TG_REMINDER_PERIOD_CYCLES']
 # ================================================================================================
 # ================================================================================================
 
@@ -193,31 +215,11 @@ def _init_db_conn():
 
 def _get_db_conn():
     print('_get_db_conn(): Возвращаю подключение к БД: ')
-    print(f'_get_db_conn(): dbname = {DB_NAME}')
-    print(f'_get_db_conn(): user = {DB_USER}')
-    print(f'_get_db_conn(): host = {DB_HOST}')
-    print(f'_get_db_conn(): password = {DB_PASSWORD}')
-    try:
-        print('_get_db_conn(): Первая попытка...')
-        conn = psycopg2.connect(dbname=DB_NAME,
-                                user=DB_USER,
-                                host=DB_HOST,
-                                password=DB_PASSWORD)
-        print('_get_db_conn(): Первая попытка удачная!')
-        return conn
-    except psycopg2.OperationalError as error:
-        print(f'_get_db_conn(): Ошибка! {str(error)}')
-        if f"database \"{DB_NAME}\" does not exist" in str(error):
-            print(f'_get_db_conn(): Нет БД {DB_NAME}. Создаю...')
-            _create_db()
-            return psycopg2.connect(dbname=DB_NAME,
-                                    user=DB_USER,
-                                    host=DB_HOST,
-                                    password=DB_PASSWORD)
-        else:
-            print(f'_get_db_conn(): Разбирайся, короче')
-            # time.sleep(600)
-            exit(1)
+    return psycopg2.connect(dbname=DB_NAME,
+                            user=DB_USER,
+                            host=DB_HOST,
+                            password=DB_PASSWORD)
+
 
 
 def _format_psql_table_create_query():
@@ -246,11 +248,6 @@ def _create_table_if_not_exists(conn):
 
 def get_orders_from_db(conn):
     print(f'get_orders_from_db(): Начинаю работать.')
-    # conn = _init_db_conn()
-    # conn = _create_db()
-
-    # conn = _get_db_conn()
-
     _create_table_if_not_exists(conn)
 
     cur = conn.cursor()
@@ -324,9 +321,7 @@ def _update_orders(conn, orders):
         conn.commit()
 
 
-def update_db(new_orders, deleted_orders, updated_orders):
-    conn = _get_db_conn()
-
+def update_db(conn, new_orders, deleted_orders, updated_orders):
     _create_orders(conn, new_orders)
 
     _update_orders(conn, updated_orders)
@@ -435,6 +430,61 @@ def wait_for_db_init():
             exit(1)
 
 
+def _delivery_date_passed(date):
+    order_date = datetime.date(int(date.split('.')[2]),
+                             int(date.split('.')[1]),
+                             int(date.split('.')[0]))
+
+    if order_date < datetime.date.today():
+        return True
+
+
+def _send_telegram_message(message, chat_ids):
+    x = 1
+    for chat_id in chat_ids:
+        send_message = f'https://api.telegram.org/bot{TG_BOT_TOKEN}/sendMessage?chat_id={chat_id}&parse_mode=Markdown&text={message}'
+
+        response = requests.get(send_message)
+
+    # print(response.json())
+    x = 1
+
+def get_chat_ids():
+    chat_ids = set()
+    updates_url = f'https://api.telegram.org/bot{TG_BOT_TOKEN}/getUpdates'
+    updates = requests.get(updates_url).json()
+    x = 1
+    for result in updates['result']:
+        if result['message']:
+            if not result['message']['chat']['id'] in chat_ids:
+                chat_ids.add(result['message']['chat']['id'])
+                x = 1
+
+    x = 1
+    return chat_ids
+
+
+def send_notifications_delivery_passed(orders, already_notified):
+    notified_orders = set()
+    # 1. get chat ids
+    chat_ids = get_chat_ids()
+
+    for order, order_value in orders.items():
+        if _delivery_date_passed(order_value[3]):
+            notified_orders.add(order)
+            # дважды не напоминаем, не спамим
+            if order in already_notified:
+                continue
+
+            msg = f'Не соблюден срок поставки заказа: {order} ({order_value[3]})!'
+            print(msg)
+            _send_telegram_message(msg, chat_ids)
+
+
+    return notified_orders
+
+
+
 def main():
     """
 
@@ -456,12 +506,19 @@ def main():
     """
     conn = None
     while not conn:
-        time.sleep(10)
         conn = wait_for_db_init()
+
+        if not conn:
+            time.sleep(10)
 
 
     print(f'main.py(): Начало работы. Получаем актуальные данные из БД..')
     old_data = get_orders_from_db(conn)
+
+    orders_delivery_passed_already_notified = set()
+
+    # Периодичность напоминания в телегу
+    reminder_counter = 0
 
     while True:
         print('\n--- Watch to Google Sheets...')
@@ -469,10 +526,22 @@ def main():
         if network_error:
             continue
 
+        notified = send_notifications_delivery_passed(new_data, orders_delivery_passed_already_notified)
+
+
         orders_to_insert, orders_to_delete, orders_to_update = compare_orders(new_data, old_data)
-        update_db(orders_to_insert, orders_to_delete, orders_to_update)
+        update_db(conn, orders_to_insert, orders_to_delete, orders_to_update)
         old_data = new_data
+        orders_delivery_passed_already_notified = notified
         print('--- End. sleeping...')
+
+
+        reminder_counter += 1
+        # Устанавливаем период напоминания
+        if reminder_counter % TG_REMINDER_PERIOD_CYCLES == 0:
+            orders_delivery_passed_already_notified = set()
+
+
         time.sleep(5)
 
 
