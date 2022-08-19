@@ -14,9 +14,10 @@ RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 USER appuser
 
 COPY ./requirements.txt /app/requirements.txt
-COPY ./quickstart.py /app/quickstart.py
+COPY ./main.py /app/main.py
+COPY ./src /app/src
 COPY --chown=appuser:appuser ./token.json /app/token.json
-COPY ./client_secret_226730576997-ec5guc24o5fjat8mfq0bgt1sm48188ag_apps_googleusercontent_com.json /app/client_secret_226730576997-ec5guc24o5fjat8mfq0bgt1sm48188ag_apps_googleusercontent_com.json
+COPY ./client_secret.json /app/client_secret.json
 
 WORKDIR /app
 
