@@ -60,8 +60,8 @@ Ks-test состоит из логических частей, решающих 
 
 Список переменных, описанных в ```.env```, представлен ниже.
 **Взаимодействие с Google API:**
-- ```GOOGLE_API_CLIENT_SECRET_FILE```  JSON-файл авторизации Google OAuth2 client id, файл
-- ```GOOGLE_API_CLIENT_TOKEN_FILE``` Токен доступа к Google API, файл
+- ```GOOGLE_API_CLIENT_SECRET_FILE```  JSON-файл авторизации Google OAuth2 client id, путь к файлу, строка
+- ```GOOGLE_API_CLIENT_TOKEN_FILE``` Токен доступа к Google API, путь к файлу, строка
 
 
 **Взаимодействие с Google Sheets:**
